@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PLC / Internal / Dashboard — Rule Canvas</title>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#eef1f5; --panel:#ffffff; --ink:#1c2430; --muted:#6b7785; --line:#dce1e8;
+    --read:#2f6fed; --write:#e8542b; --internal:#0d9488; --dash:#7c3aed;
+    --chip:#f4f6f9; --ng:#e0473a; --ok:#56b733;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font-family:'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  #root{height:100vh;display:flex;flex-direction:column}
+  .topbar{height:52px;flex:0 0 auto;background:var(--panel);border-bottom:1px solid var(--line);
+    display:flex;align-items:center;gap:16px;padding:0 18px;z-index:40}
+  .topbar h1{font-size:15px;font-weight:700;margin:0;letter-spacing:-.2px}
+  .topbar .sub{font-size:12px;color:var(--muted)}
+  .spacer{flex:1}
+  .btn{border:1px solid var(--line);background:var(--panel);border-radius:7px;padding:7px 13px;
+    font-size:13px;font-weight:600;cursor:pointer;color:var(--ink)}
+  .btn:hover{background:var(--chip)}
+  .btn.primary{background:var(--write);border-color:var(--write);color:#fff}
+  .btn.primary:hover{filter:brightness(.95)}
+  .legend{display:flex;gap:14px;align-items:center;font-size:12px;color:var(--muted)}
+  .legend .k{display:flex;gap:6px;align-items:center}
+  .legend .sw{width:16px;height:3px;border-radius:2px}
+
+  .stage{flex:1;position:relative;overflow:auto}
+  .canvas{position:relative;min-width:1180px;min-height:100%;
+    background-image:radial-gradient(#d4dae2 1px,transparent 1px);background-size:22px 22px;
+    padding:26px 20px 60px;display:grid;grid-template-columns:210px 1fr 220px;gap:0}
+  .col-head{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;
+    color:var(--muted);margin:0 0 12px;display:flex;align-items:center;gap:7px}
+  .col-head .dot{width:8px;height:8px;border-radius:50%}
+
+  /* rails */
+  .rail{display:flex;flex-direction:column;gap:10px;position:relative;z-index:2}
+  .rail.left{padding-right:34px}
+  .rail.right{padding-left:34px}
+  .tag{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:9px 11px;
+    box-shadow:0 1px 2px rgba(20,30,50,.05);cursor:default}
+  .tag .lab{font-size:12.5px;font-weight:600}
+  .tag .addr{font-size:11px;color:var(--muted);font-family:ui-monospace,monospace;margin-top:2px}
+  .tag .dt{display:inline-block;font-size:9.5px;font-weight:700;letter-spacing:.4px;
+    padding:1px 6px;border-radius:20px;margin-top:6px;text-transform:uppercase}
+  .dt.boolean{background:#eaf1ff;color:var(--read)}
+  .dt.number{background:#eafaf0;color:#1f9d55}
+  .dt.string{background:#f3ecff;color:var(--dash)}
+
+  /* center trees */
+  .trees{display:flex;flex-direction:column;gap:20px;position:relative;z-index:2}
+  .cycle{align-self:center;background:#1c2430;color:#fff;border-radius:11px;padding:9px 20px;
+    font-size:13px;font-weight:700;box-shadow:0 3px 8px rgba(20,30,50,.18);position:relative}
+  .cycle small{display:block;font-weight:500;font-size:10.5px;opacity:.7;letter-spacing:.4px}
+  .capture{background:rgba(255,255,255,.55);border:1px solid var(--line);border-radius:13px;
+    padding:12px 14px 14px}
+  .capture .cap-h{display:flex;align-items:center;gap:8px;margin-bottom:11px}
+  .capture .cap-h .nm{font-size:13px;font-weight:700}
+  .capture .cap-h .cc{font-size:10.5px;color:var(--muted);font-family:ui-monospace,monospace}
+  .capture .cap-h .cam{width:22px;height:22px;border-radius:6px;background:#e7edf4;
+    display:flex;align-items:center;justify-content:center;font-size:12px}
+  .modrow{display:flex;flex-direction:column;gap:9px}
+  .node{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 12px;
+    position:relative;opacity:.55;transition:opacity .15s,box-shadow .15s,border-color .15s}
+  .node.live{opacity:1}
+  .node.hot{opacity:1;box-shadow:0 0 0 2px var(--hot,#2f6fed)33,0 3px 10px rgba(20,30,50,.12);
+    border-color:var(--hot,#2f6fed)}
+  .node .nh{display:flex;align-items:center;gap:7px}
+  .node .ty{font-size:9px;font-weight:800;letter-spacing:.5px;color:#fff;background:#94a3b3;
+    padding:2px 6px;border-radius:5px}
+  .node .nm{font-size:12.5px;font-weight:600}
+  .ports{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+  .port{font-size:10px;color:var(--muted);background:var(--chip);border:1px solid var(--line);
+    border-radius:20px;padding:2px 8px;font-family:ui-monospace,monospace}
+  .port.used{background:#fff;color:var(--ink);border-color:#c3ccd8;font-weight:600}
+  /* side anchor nubs */
+  .nub{position:absolute;top:14px;width:9px;height:9px;border-radius:50%;background:#c3ccd8;border:2px solid #fff}
+  .nub.L{left:-5px}.nub.R{right:-5px}
+
+  /* dashboard */
+  .dsec{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:10px 11px}
+  .dsec .dh{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;
+    letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+  .dbtn{background:#faf5ff;border:1px solid #e6d8ff;border-radius:8px;padding:7px 10px;
+    font-size:12px;font-weight:600;color:var(--dash);position:relative;margin-bottom:7px;cursor:default}
+  .dbtn:last-child{margin-bottom:0}
+  .dbtn .kind{font-size:9px;opacity:.7;font-weight:700;letter-spacing:.4px}
+  .dbtn.ghost{background:transparent;border:1px dashed var(--line);color:var(--muted);text-align:center}
+
+  /* edges */
+  .edgelayer{position:absolute;inset:0;pointer-events:none;z-index:3;overflow:visible}
+  .edge{fill:none;stroke-width:2;opacity:.9;transition:opacity .15s,stroke-width .15s}
+  .edge.dim{opacity:.12}
+  .edge.hot{stroke-width:3.2;opacity:1}
+  .edge.internal{stroke-dasharray:6 5}
+  .elabel{position:absolute;transform:translate(-50%,-50%);z-index:4;background:#fff;
+    border:1px solid var(--line);border-radius:7px;padding:2px 7px;font-size:10.5px;font-weight:600;
+    box-shadow:0 1px 3px rgba(20,30,50,.1);pointer-events:auto;cursor:pointer;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis}
+  .elabel.dim{opacity:.25}
+  .elabel .op{font-family:ui-monospace,monospace}
+
+  /* inspector */
+  .inspector{position:fixed;top:52px;right:0;bottom:0;width:340px;background:var(--panel);
+    border-left:1px solid var(--line);box-shadow:-6px 0 22px rgba(20,30,50,.09);z-index:60;
+    display:flex;flex-direction:column;transform:translateX(100%);transition:transform .22s ease}
+  .inspector.open{transform:translateX(0)}
+  .insp-h{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+  .insp-h .t{font-size:14px;font-weight:700}
+  .insp-b{padding:14px 16px;overflow:auto;flex:1}
+  .x{border:none;background:none;font-size:20px;cursor:pointer;color:var(--muted);line-height:1}
+  .fld{margin-bottom:13px}
+  .fld label{display:block;font-size:11px;font-weight:700;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}
+  .fld select,.fld input{width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 9px;
+    font-size:13px;font-family:inherit;color:var(--ink);background:#fff}
+  .row2{display:flex;gap:8px}.row2>*{flex:1}
+  .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{flex:1;border:none;background:#fff;padding:8px 4px;font-size:11.5px;font-weight:600;
+    cursor:pointer;color:var(--muted);border-right:1px solid var(--line)}
+  .seg button:last-child{border-right:none}
+  .seg button.on{background:var(--ink);color:#fff}
+  .srcchip{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:700;
+    padding:6px 11px;border-radius:8px;margin-bottom:4px}
+  .actionitem{border:1px solid var(--line);border-radius:9px;padding:9px 10px;margin-bottom:9px;background:var(--chip)}
+  .actionitem .ah{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}
+  .actionitem .ah .nm{font-size:12.5px;font-weight:700}
+  .actionitem .rm{border:none;background:none;color:var(--ng);cursor:pointer;font-size:11px;font-weight:600}
+  .hint{font-size:11.5px;color:var(--muted);line-height:1.5;margin:2px 0 14px}
+  .dirhint{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.4}
+  .insp-f{padding:12px 16px;border-top:1px solid var(--line);display:flex;gap:8px}
+  .insp-f .btn{flex:1;text-align:center}
+  .badge{font-size:9.5px;font-weight:800;letter-spacing:.4px;padding:2px 7px;border-radius:5px;color:#fff}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/jsx-source">
+const {useState,useRef,useLayoutEffect,useEffect,useMemo} = React;
+
+/* ---------- source theming ---------- */
+const SRC = {
+  read:     {label:'PLC Read',  color:'var(--read)',     hex:'#2f6fed', desc:'PLC value → tree'},
+  write:    {label:'PLC Write', color:'var(--write)',    hex:'#e8542b', desc:'tree → PLC'},
+  internal: {label:'Internal',  color:'var(--internal)', hex:'#0d9488', desc:'tree → tree'},
+  dashboard:{label:'Dashboard', color:'var(--dash)',     hex:'#7c3aed', desc:'button → tree/PLC'},
+};
+
+/* ---------- real action catalog (grouped by landing zone) ---------- */
+// zone drives where the arrowhead lands: 'plc' | 'cycle' | 'module' | 'db' | 'dashboard' | 'capture'
+const ACTIONS = {
+  'write-to-plc':       {label:'Write to PLC',       zone:'plc',      sources:['read','write','dashboard']},
+  'trigger-image':      {label:'Trigger Image',      zone:'capture',  sources:['read','internal','dashboard']},
+  'change-variant':     {label:'Change Variant',     zone:'cycle',    sources:['read','internal','dashboard']},
+  'cycle-start':        {label:'Cycle Start',        zone:'cycle',    sources:['read','internal','dashboard']},
+  'cycle-hold':         {label:'Cycle Hold',         zone:'cycle',    sources:['read','internal','dashboard']},
+  'cycle-release':      {label:'Cycle Release',      zone:'cycle',    sources:['read','internal','dashboard']},
+  'clear-captures':     {label:'Clear Captures',     zone:'cycle',    sources:['read','internal','dashboard']},
+  'change-ground-truth':{label:'Change Ground Truth',zone:'module',   sources:['read','internal','dashboard']},
+  'reverse-judgement':  {label:'Reverse Judgement',  zone:'module',   sources:['read','internal','dashboard']},
+  'write-to-db':        {label:'Write to DB',        zone:'db',       sources:['read','internal','dashboard']},
+  'dashboard-refresh':  {label:'Dashboard Refresh',  zone:'dashboard',sources:['read','internal','dashboard']},
+};
+
+/* ---------- operators by datatype (real, limited set) ---------- */
+const OPS = {
+  boolean:[['=','='],['always','Always']],
+  number :[['=','='],['!=','!='],['>','>'],['<','<'],['always','Always']],
+  string :[['=','='],['!=','!='],['always','Always'],['partial','Partial Match']],
+};
+
+/* ---------- seed data ---------- */
+const PLC = [
+  {id:'p1',lab:'Trigger In',  addr:'DCOIL 10', dt:'boolean'},
+  {id:'p2',lab:'Part Present',addr:'REG 40001',dt:'number'},
+  {id:'p3',lab:'Reject Out',  addr:'COIL 20',  dt:'boolean'},
+  {id:'p4',lab:'Batch Code',  addr:'REG 40010',dt:'string'},
+];
+const CAPTURES = [
+  {id:'cc1',nm:'Cam 1 · Top',cc:'cfg_a1',modules:[
+    {id:'m1',ty:'ODC',nm:'Assembly Check',ports:[['result','boolean'],['current_count','number'],['fail_count','number']]},
+    {id:'m2',ty:'IC', nm:'Label Class',   ports:[['result','boolean'],['detected_class','string']]},
+  ]},
+  {id:'cc2',nm:'Cam 2 · Side',cc:'cfg_a2',modules:[
+    {id:'m3',ty:'OCR', nm:'Batch OCR', ports:[['result','boolean'],['detected_text','string']]},
+    {id:'m4',ty:'BEAD',nm:'Bead Weld', ports:[['result','boolean'],['caliper_pass_percentage','number']]},
+  ]},
+];
+const DASH = [
+  {id:'ds1',captureId:'cc1',title:'Cam 1 Panel',buttons:[]},
+  {id:'ds2',captureId:'cc2',title:'Cam 2 Panel',buttons:[{id:'b1',label:'Re-run Cam 2',kind:'button'}]},
+];
+
+const R = (o)=>o;
+const SEED_RULES = [
+  R({id:'r1',source:'read',
+     cond:{end:'plc',ref:'p2',op:'>',val:'0'},
+     actions:[{name:'trigger-image',target:'cc1'}]}),
+  R({id:'r2',source:'write',
+     cond:{end:'node',ref:'m1',port:'result',op:'=',val:'NG'},
+     actions:[{name:'write-to-plc',target:'p3',val:'1'}]}),
+  R({id:'r3',source:'internal',
+     cond:{end:'node',ref:'m4',port:'caliper_pass_percentage',op:'<',val:'90'},
+     actions:[{name:'cycle-hold',target:'cyc'}]}),
+  R({id:'r4',source:'internal',
+     cond:{end:'node',ref:'m2',port:'result',op:'=',val:'NG'},
+     actions:[{name:'reverse-judgement',target:'m2'}]}),
+  R({id:'r5',source:'dashboard',
+     cond:{end:'button',ref:'b1'},
+     actions:[{name:'trigger-image',target:'cc2'}]}),
+];
+
+/* ---------- helpers ---------- */
+const moduleById = (id)=>{for(const c of CAPTURES){const m=c.modules.find(m=>m.id===id);if(m)return {mod:m,cap:c};}return null;};
+const captureById = (id)=>CAPTURES.find(c=>c.id===id);
+const plcById = (id)=>PLC.find(p=>p.id===id);
+const buttonById=(id)=>{for(const d of DASH){const b=d.buttons.find(b=>b.id===id);if(b)return {btn:b,sec:d};}return null;};
+
+// derive source from endpoints (the unifying grammar)
+function deriveSource(cond, actions){
+  if(cond.end==='button') return 'dashboard';
+  if(cond.end==='plc') return 'read';
+  // cond.end==='node'
+  if(actions.some(a=>ACTIONS[a.name] && ACTIONS[a.name].zone==='plc')) return 'write';
+  return 'internal';
+}
+
+// human label for a condition
+function condText(cond){
+  if(cond.end==='plc'){const p=plcById(cond.ref);return `${p?p.lab:cond.ref} ${cond.op} ${cond.val}`;}
+  if(cond.end==='button'){const b=buttonById(cond.ref);return `▶ ${b?b.btn.label:'button'}`;}
+  const mb=moduleById(cond.ref);return `${mb?mb.mod.ty:''}.${cond.port} ${cond.op} ${cond.val}`;
+}
+function actionText(a){
+  const A=ACTIONS[a.name];let t=A?A.label:a.name;
+  if(a.name==='write-to-plc'){const p=plcById(a.target);t+=` → ${p?p.lab:''}=${a.val||''}`;}
+  else if(a.name==='trigger-image'){const c=captureById(a.target);t+=` → ${c?c.nm:''}`;}
+  else if(ACTIONS[a.name]&&ACTIONS[a.name].zone==='module'){const mb=moduleById(a.target);if(mb)t+=` → ${mb.mod.ty}`;}
+  return t;
+}
+
+/* ---------- anchor endpoints for an edge ---------- */
+// returns {tailId, tailSide, tailDir, headId, headSide, headDir}
+function edgeEnds(rule){
+  const a0 = rule.actions[0]||{};
+  const src = rule.source;
+  if(src==='read'){
+    return {tailId:`plc:${rule.cond.ref}`,tailSide:'R',tailDir:1,
+            ...headForAction(a0)};
+  }
+  if(src==='write'){
+    return {tailId:`node:${rule.cond.ref}`,tailSide:'L',tailDir:-1,
+            headId:`plc:${a0.target}`,headSide:'R',headDir:1};
+  }
+  if(src==='dashboard'){
+    // dashboard rail is on the RIGHT, so actions approach their target from the right
+    return {tailId:`dash:${rule.cond.ref}`,tailSide:'L',tailDir:-1,
+            ...headForActionRight(a0)};
+  }
+  // internal
+  return {tailId:`node:${rule.cond.ref}`,tailSide:'R',tailDir:1,
+          ...headForActionRight(a0)};
+}
+function headForAction(a){
+  const z = ACTIONS[a.name]?ACTIONS[a.name].zone:'cycle';
+  if(z==='plc')       return {headId:`plc:${a.target}`,headSide:'R',headDir:1};
+  if(z==='capture')   return {headId:`cap:${a.target}`,headSide:'L',headDir:-1};
+  if(z==='module')    return {headId:`node:${a.target}`,headSide:'L',headDir:-1};
+  if(z==='dashboard') return {headId:`dashcol`,headSide:'L',headDir:-1};
+  if(z==='db')        return {headId:`dbsink`,headSide:'L',headDir:-1};
+  return {headId:`cyc`,headSide:'L',headDir:-1}; // cycle
+}
+function headForActionRight(a){
+  const z = ACTIONS[a.name]?ACTIONS[a.name].zone:'cycle';
+  if(z==='module')  return {headId:`node:${a.target}`,headSide:'R',headDir:1};
+  if(z==='capture') return {headId:`cap:${a.target}`,headSide:'R',headDir:1};
+  if(z==='cycle')   return {headId:`cyc`,headSide:'R',headDir:1};
+  return headForAction(a); // plc / db / dashboard have fixed locations
+}
+
+/* =======================================================================
+   APP
+   ======================================================================= */
+function App(){
+  const [rules,setRules]=useState(SEED_RULES);
+  const [hover,setHover]=useState(null);
+  const [sel,setSel]=useState(null);
+  const [pos,setPos]=useState({});
+  const [tick,setTick]=useState(0);
+  const [builder,setBuilder]=useState(null); // draft rule or null
+
+  const canvasRef=useRef(null);
+  const anchors=useRef({});
+  const setA=(id)=>(el)=>{if(el)anchors.current[id]=el;};
+
+  // measure anchors -> positions relative to canvas
+  useLayoutEffect(()=>{
+    const cv=canvasRef.current;if(!cv)return;
+    const cr=cv.getBoundingClientRect();
+    const p={};
+    for(const id in anchors.current){
+      const el=anchors.current[id];if(!el||!el.isConnected)continue;
+      const r=el.getBoundingClientRect();
+      p[id]={L:{x:r.left-cr.left,y:r.top-cr.top+r.height/2},
+             R:{x:r.right-cr.left,y:r.top-cr.top+r.height/2},
+             C:{x:r.left-cr.left+r.width/2,y:r.top-cr.top+r.height/2}};
+    }
+    setPos(p);
+  },[rules,tick,builder]);
+
+  useEffect(()=>{
+    const relayout=()=>setTick(t=>t+1);
+    window.addEventListener('resize',relayout);
+    const stage=canvasRef.current?canvasRef.current.parentElement:null;
+    if(stage)stage.addEventListener('scroll',relayout);
+    const t=setTimeout(relayout,300); // after fonts settle
+    window.addEventListener('load',relayout);
+    return()=>{window.removeEventListener('resize',relayout);
+      if(stage)stage.removeEventListener('scroll',relayout);
+      window.removeEventListener('load',relayout);clearTimeout(t);};
+  },[]);
+
+  // which nodes/tags are involved in the active (hover/sel) rule
+  const active = hover||sel;
+  const involved = useMemo(()=>{
+    const s=new Set();
+    const r=rules.find(x=>x.id===active);if(!r)return s;
+    if(r.cond.end==='node')s.add('node:'+r.cond.ref);
+    if(r.cond.end==='plc')s.add('plc:'+r.cond.ref);
+    r.actions.forEach(a=>{
+      const z=ACTIONS[a.name]?ACTIONS[a.name].zone:'';
+      if(z==='plc')s.add('plc:'+a.target);
+      if(z==='module')s.add('node:'+a.target);
+      if(z==='capture')s.add('cap:'+a.target);
+    });
+    return s;
+  },[active,rules]);
+  // any node referenced by ANY rule is "live" (full opacity)
+  const liveNodes = useMemo(()=>{
+    const s=new Set();
+    rules.forEach(r=>{
+      if(r.cond.end==='node')s.add(r.cond.ref);
+      r.actions.forEach(a=>{if(ACTIONS[a.name]&&ACTIONS[a.name].zone==='module')s.add(a.target);});
+    });
+    return s;
+  },[rules]);
+
+  const path=(ends)=>{
+    const t=pos[ends.tailId], h=pos[ends.headId];
+    if(!t||!h)return null;
+    const A=t[ends.tailSide]||t.C, B=h[ends.headSide]||h.C;
+    const c=Math.max(50,Math.abs(B.x-A.x)*0.45);
+    return {d:`M${A.x},${A.y} C${A.x+ends.tailDir*c},${A.y} ${B.x+ends.headDir*c},${B.y} ${B.x},${B.y}`,
+            mid:{x:(A.x+B.x)/2 + (ends.tailDir+ends.headDir)*c*0.28, y:(A.y+B.y)/2}};
+  };
+
+  const delRule=(id)=>{setRules(rs=>rs.filter(r=>r.id!==id));setSel(null);};
+
+  return (
+    <React.Fragment>
+      <div className="topbar">
+        <h1>Rule Canvas</h1>
+        <span className="sub">PLC Read · Write · Internal · Dashboard — unified condition→action view</span>
+        <div className="spacer"></div>
+        <div className="legend">
+          {Object.entries(SRC).map(([k,v])=>(
+            <span className="k" key={k}><span className="sw" style={{background:v.hex,
+              ...(k==='internal'?{backgroundImage:'repeating-linear-gradient(90deg,'+v.hex+' 0 6px,transparent 6px 11px)',background:'none',borderTop:'3px dashed '+v.hex,height:0}:{})}}></span>{v.label}</span>
+          ))}
+        </div>
+        <button className="btn primary" onClick={()=>setBuilder(newDraft())}>+ New Rule</button>
+      </div>
+
+      <div className="stage">
+        <div className="canvas" ref={canvasRef}>
+          {/* ---- LEFT: PLC rail ---- */}
+          <div className="rail left">
+            <div className="col-head"><span className="dot" style={{background:'var(--read)'}}></span>PLC</div>
+            {PLC.map(p=>(
+              <div className="tag" key={p.id} ref={setA('plc:'+p.id)}
+                   style={involved.has('plc:'+p.id)?{borderColor:SRC[active&&rules.find(r=>r.id===active).source||'read'].hex,boxShadow:'0 0 0 2px '+SRC[(rules.find(r=>r.id===active)||{source:'read'}).source].hex+'22'}:{}}>
+                <div className="lab">{p.lab}</div>
+                <div className="addr">{p.addr}</div>
+                <span className={'dt '+p.dt}>{p.dt}</span>
+              </div>
+            ))}
+            <div className="tag" ref={setA('dbsink')} style={{textAlign:'center',color:'var(--muted)',borderStyle:'dashed'}}>
+              <div className="lab" style={{fontSize:11}}>▤ DB sink</div>
+            </div>
+          </div>
+
+          {/* ---- CENTER: capture trees ---- */}
+          <div className="trees">
+            <div className="cycle" ref={setA('cyc')}>Line A · Cycle<small>INSTANCE ROOT · cycle actions land here</small></div>
+            {CAPTURES.map(cap=>(
+              <div className="capture" key={cap.id} ref={setA('cap:'+cap.id)}>
+                <div className="cap-h">
+                  <span className="cam">📷</span>
+                  <span className="nm">{cap.nm}</span>
+                  <span className="cc">{cap.cc}</span>
+                </div>
+                <div className="modrow">
+                  {cap.modules.map(m=>{
+                    const usedPorts=new Set();
+                    rules.forEach(r=>{if(r.cond.end==='node'&&r.cond.ref===m.id)usedPorts.add(r.cond.port);});
+                    const isHot=involved.has('node:'+m.id);
+                    const hotColor=isHot?SRC[(rules.find(r=>r.id===active)||{source:'read'}).source].hex:null;
+                    return (
+                      <div className={'node'+(liveNodes.has(m.id)?' live':'')+(isHot?' hot':'')}
+                           key={m.id} ref={setA('node:'+m.id)}
+                           style={isHot?{'--hot':hotColor,borderColor:hotColor}:{}}>
+                        <span className="nub L"></span><span className="nub R"></span>
+                        <div className="nh"><span className="ty">{m.ty}</span><span className="nm">{m.nm}</span></div>
+                        <div className="ports">
+                          {m.ports.map(([pn])=>(
+                            <span className={'port'+(usedPorts.has(pn)?' used':'')} key={pn}>{pn}</span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* ---- RIGHT: dashboard rail ---- */}
+          <div className="rail right">
+            <div className="col-head" ref={setA('dashcol')}><span className="dot" style={{background:'var(--dash)'}}></span>Dashboard</div>
+            {DASH.map(d=>(
+              <div className="dsec" key={d.id}>
+                <div className="dh">📊 {d.title}</div>
+                {d.buttons.length===0 && <div className="dbtn ghost">no buttons yet</div>}
+                {d.buttons.map(b=>(
+                  <div className="dbtn" key={b.id} ref={setA('dash:'+b.id)}>
+                    <div className="kind">{b.kind.toUpperCase()}</div>{b.label}
+                  </div>
+                ))}
+              </div>
+            ))}
+            <div className="hint" style={{padding:'0 2px'}}>Dashboard actions auto-place a control in the section bound to the same <b>cameraConfigId</b>.</div>
+          </div>
+
+          {/* ---- EDGES ---- */}
+          <svg className="edgelayer">
+            <defs>
+              {Object.entries(SRC).map(([k,v])=>(
+                <marker key={k} id={'ah-'+k} markerWidth="9" markerHeight="9" refX="7" refY="3"
+                        orient="auto" markerUnits="userSpaceOnUse">
+                  <path d="M0,0 L7,3 L0,6 Z" fill={v.hex}/>
+                </marker>
+              ))}
+            </defs>
+            {rules.map(r=>{
+              const pp=path(edgeEnds(r));if(!pp)return null;
+              const isActive=active===r.id;
+              const dim=active&&!isActive;
+              return <path key={r.id} className={'edge '+r.source+(isActive?' hot':'')+(dim?' dim':'')}
+                           d={pp.d} stroke={SRC[r.source].hex} markerEnd={'url(#ah-'+r.source+')'}/>;
+            })}
+          </svg>
+          {/* ---- EDGE LABELS ---- */}
+          {rules.map(r=>{
+            const pp=path(edgeEnds(r));if(!pp)return null;
+            const isActive=active===r.id, dim=active&&!isActive;
+            return (
+              <div key={'l'+r.id} className={'elabel'+(dim?' dim':'')}
+                   style={{left:pp.mid.x,top:pp.mid.y,borderColor:isActive?SRC[r.source].hex:'var(--line)',
+                           color:isActive?SRC[r.source].hex:'var(--ink)'}}
+                   onMouseEnter={()=>setHover(r.id)} onMouseLeave={()=>setHover(null)}
+                   onClick={()=>setSel(r.id)}>
+                {condText(r.cond)}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ---- INSPECTOR: selected rule ---- */}
+      <RuleInspector rule={rules.find(r=>r.id===sel)} open={!!sel&&!builder}
+        onClose={()=>setSel(null)} onDelete={delRule}
+        onEdit={(r)=>{setBuilder({...r,_editing:true});setSel(null);}}/>
+
+      {/* ---- BUILDER ---- */}
+      {builder && <RuleBuilder draft={builder} setDraft={setBuilder}
+        onCancel={()=>setBuilder(null)}
+        onSave={(r)=>{
+          const src=deriveSource(r.cond,r.actions);
+          const finalRule={...r,source:src};
+          setRules(rs=>{
+            const others=rs.filter(x=>x.id!==r.id);
+            return [...others,finalRule];
+          });
+          // dashboard auto-placement: create a button in the section bound to the target capture
+          if(src==='dashboard' && r.cond.end==='button' && r._newButton){
+            const capId = r.actions[0] && ACTIONS[r.actions[0].name] && ACTIONS[r.actions[0].name].zone==='capture'
+              ? r.actions[0].target : r.cond._capture;
+            const sec=DASH.find(d=>d.captureId===capId);
+            if(sec && !sec.buttons.find(b=>b.id===r.cond.ref))
+              sec.buttons.push({id:r.cond.ref,label:r.cond._label||'New Button',kind:'button'});
+          }
+          setBuilder(null);setTick(t=>t+1);
+        }}/>}
+    </React.Fragment>
+  );
+}
+
+/* ---------- new blank draft ---------- */
+let _nid=100;
+function newDraft(){
+  return {id:'r'+(++_nid), cond:{end:'node',ref:'m1',port:'result',op:'=',val:'NG'}, actions:[]};
+}
+
+/* =======================================================================
+   INSPECTOR (view selected rule)
+   ======================================================================= */
+function RuleInspector({rule,open,onClose,onDelete,onEdit}){
+  if(!rule) return <div className={'inspector'}></div>;
+  const s=SRC[rule.source];
+  return (
+    <div className={'inspector'+(open?' open':'')}>
+      <div className="insp-h"><span className="t">Rule detail</span><button className="x" onClick={onClose}>×</button></div>
+      <div className="insp-b">
+        <div className="srcchip" style={{background:s.hex+'18',color:s.hex}}>
+          <span className="badge" style={{background:s.hex}}>{s.label}</span> {s.desc}
+        </div>
+        <div className="fld" style={{marginTop:14}}>
+          <label>When (condition)</label>
+          <div style={{fontSize:13,fontWeight:600}}>{condText(rule.cond)}</div>
+        </div>
+        <div className="fld">
+          <label>Then (actions)</label>
+          {rule.actions.map((a,i)=>(
+            <div className="actionitem" key={i}><div className="ah"><span className="nm">{actionText(a)}</span></div>
+              <div style={{fontSize:11,color:'var(--muted)'}}>lands on <b>{ACTIONS[a.name]?ACTIONS[a.name].zone:'?'}</b></div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="insp-f">
+        <button className="btn" onClick={()=>onEdit(rule)}>Edit</button>
+        <button className="btn" style={{color:'var(--ng)',borderColor:'#f2c9c4'}} onClick={()=>onDelete(rule.id)}>Delete</button>
+      </div>
+    </div>
+  );
+}
+
+/* =======================================================================
+   BUILDER (authoring)
+   ======================================================================= */
+function RuleBuilder({draft,setDraft,onCancel,onSave}){
+  const d=draft;
+  const set=(patch)=>setDraft({...d,...patch});
+  const setCond=(patch)=>setDraft({...d,cond:{...d.cond,...patch}});
+
+  // condition datatype -> operator options
+  let dt='boolean';
+  if(d.cond.end==='plc'){const p=plcById(d.cond.ref);dt=p?p.dt:'boolean';}
+  else if(d.cond.end==='node'){const mb=moduleById(d.cond.ref);const port=mb&&mb.mod.ports.find(x=>x[0]===d.cond.port);dt=port?port[1]:'boolean';}
+
+  const src=deriveSource(d.cond,d.actions);
+  const s=SRC[src];
+  const availActions=Object.entries(ACTIONS).filter(([,a])=>a.sources.includes(src));
+
+  const addAction=()=>{
+    const first=availActions[0];const name=first[0];
+    setDraft({...d,actions:[...d.actions,defaultAction(name)]});
+  };
+  const setAction=(i,patch)=>{const acts=d.actions.slice();acts[i]={...acts[i],...patch};setDraft({...d,actions:acts});};
+  const rmAction=(i)=>{const acts=d.actions.slice();acts.splice(i,1);setDraft({...d,actions:acts});};
+
+  const canSave=d.actions.length>0 && (d.cond.end!=='button' || d.cond._label);
+
+  return (
+    <div className="inspector open">
+      <div className="insp-h"><span className="t">{d._editing?'Edit rule':'New rule'}</span><button className="x" onClick={onCancel}>×</button></div>
+      <div className="insp-b">
+        {/* live derived source */}
+        <div className="srcchip" style={{background:s.hex+'18',color:s.hex}}>
+          <span className="badge" style={{background:s.hex}}>{s.label}</span> {s.desc}
+        </div>
+        <div className="dirhint">Source is derived automatically from where the condition sits and where the action lands.</div>
+
+        {/* CONDITION */}
+        <div className="fld" style={{marginTop:8}}>
+          <label>Condition sits on</label>
+          <div className="seg">
+            {[['node','Module output'],['plc','PLC value'],['button','Dashboard button']].map(([k,l])=>(
+              <button key={k} className={d.cond.end===k?'on':''} onClick={()=>setCond(condDefaults(k))}>{l}</button>
+            ))}
+          </div>
+        </div>
+
+        {d.cond.end==='node' && <NodeCondition cond={d.cond} setCond={setCond} dt={dt}/>}
+        {d.cond.end==='plc'  && <PlcCondition  cond={d.cond} setCond={setCond} dt={dt}/>}
+        {d.cond.end==='button' && (
+          <div className="fld"><label>Button label</label>
+            <input value={d.cond._label||''} placeholder="e.g. Re-run Cam 2"
+              onChange={e=>setCond({_label:e.target.value})}/>
+            <div className="dirhint">A control with this label is auto-placed in the dashboard section bound to the action's capture.</div>
+          </div>
+        )}
+
+        {/* ACTIONS */}
+        <div className="fld" style={{marginTop:18}}>
+          <label>Then — actions</label>
+          {d.actions.length===0 && <div className="hint">No actions yet. Add at least one.</div>}
+          {d.actions.map((a,i)=>(
+            <div className="actionitem" key={i}>
+              <div className="ah"><span className="nm">Action {i+1}</span><button className="rm" onClick={()=>rmAction(i)}>remove</button></div>
+              <div className="fld" style={{margin:0}}>
+                <select value={a.name} onChange={e=>setAction(i,defaultAction(e.target.value))}>
+                  {availActions.map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+                </select>
+              </div>
+              <ActionTarget a={a} i={i} setAction={setAction}/>
+            </div>
+          ))}
+          <button className="btn" style={{width:'100%',marginTop:4}} onClick={addAction}>+ Add action</button>
+        </div>
+      </div>
+      <div className="insp-f">
+        <button className="btn" onClick={onCancel}>Cancel</button>
+        <button className="btn primary" disabled={!canSave} style={!canSave?{opacity:.5,cursor:'not-allowed'}:{}}
+          onClick={()=>canSave&&onSave(d)}>Save rule</button>
+      </div>
+    </div>
+  );
+}
+
+function condDefaults(end){
+  if(end==='plc')   return {end:'plc',ref:'p2',op:'>',val:'0'};
+  if(end==='button')return {end:'button',ref:'nb'+(++_nid),_label:'',_newButton:true};
+  return {end:'node',ref:'m1',port:'result',op:'=',val:'NG'};
+}
+function defaultAction(name){
+  const z=ACTIONS[name].zone;
+  const a={name};
+  if(z==='plc'){a.target='p3';a.val='1';}
+  else if(z==='capture')a.target='cc1';
+  else if(z==='module')a.target='m1';
+  else a.target=z; // cycle/db/dashboard implicit
+  return a;
+}
+
+function NodeCondition({cond,setCond,dt}){
+  const mb=moduleById(cond.ref);
+  return (
+    <React.Fragment>
+      <div className="fld"><label>Module</label>
+        <select value={cond.ref} onChange={e=>{const mb2=moduleById(e.target.value);setCond({ref:e.target.value,port:mb2.mod.ports[0][0]});}}>
+          {CAPTURES.map(c=>(
+            <optgroup key={c.id} label={c.nm}>
+              {c.modules.map(m=><option key={m.id} value={m.id}>{m.ty} · {m.nm}</option>)}
+            </optgroup>
+          ))}
+        </select>
+      </div>
+      <div className="fld"><label>Output port</label>
+        <select value={cond.port} onChange={e=>setCond({port:e.target.value})}>
+          {mb&&mb.mod.ports.map(([pn,pt])=><option key={pn} value={pn}>{pn} · {pt}</option>)}
+        </select>
+      </div>
+      <OpVal cond={cond} setCond={setCond} dt={dt}/>
+    </React.Fragment>
+  );
+}
+function PlcCondition({cond,setCond,dt}){
+  return (
+    <React.Fragment>
+      <div className="fld"><label>PLC tag</label>
+        <select value={cond.ref} onChange={e=>setCond({ref:e.target.value})}>
+          {PLC.map(p=><option key={p.id} value={p.id}>{p.lab} · {p.addr}</option>)}
+        </select>
+      </div>
+      <OpVal cond={cond} setCond={setCond} dt={dt}/>
+    </React.Fragment>
+  );
+}
+function OpVal({cond,setCond,dt}){
+  const ops=OPS[dt]||OPS.boolean;
+  const opValid=ops.some(o=>o[0]===cond.op);
+  if(!opValid && ops[0]) setTimeout(()=>setCond({op:ops[0][0]}),0);
+  return (
+    <div className="row2">
+      <div className="fld"><label>Operator</label>
+        <select value={cond.op} onChange={e=>setCond({op:e.target.value})}>
+          {ops.map(([k,l])=><option key={k} value={k}>{l}</option>)}
+        </select>
+      </div>
+      {cond.op!=='always' && <div className="fld"><label>Value</label>
+        <input value={cond.val||''} onChange={e=>setCond({val:e.target.value})}
+          placeholder={dt==='boolean'?'NG / OK':dt==='number'?'0':'text'}/>
+      </div>}
+    </div>
+  );
+}
+function ActionTarget({a,i,setAction}){
+  const z=ACTIONS[a.name].zone;
+  if(z==='plc') return (
+    <div className="row2" style={{marginTop:8}}>
+      <div className="fld" style={{margin:0}}><label>PLC tag</label>
+        <select value={a.target} onChange={e=>setAction(i,{target:e.target.value})}>
+          {PLC.map(p=><option key={p.id} value={p.id}>{p.lab}</option>)}
+        </select></div>
+      <div className="fld" style={{margin:0}}><label>Write value</label>
+        <input value={a.val||''} onChange={e=>setAction(i,{val:e.target.value})} placeholder="1"/></div>
+    </div>
+  );
+  if(z==='capture') return (
+    <div className="fld" style={{margin:'8px 0 0'}}><label>Target capture</label>
+      <select value={a.target} onChange={e=>setAction(i,{target:e.target.value})}>
+        {CAPTURES.map(c=><option key={c.id} value={c.id}>{c.nm}</option>)}
+      </select></div>
+  );
+  if(z==='module') return (
+    <div className="fld" style={{margin:'8px 0 0'}}><label>Target module</label>
+      <select value={a.target} onChange={e=>setAction(i,{target:e.target.value})}>
+        {CAPTURES.map(c=>(<optgroup key={c.id} label={c.nm}>
+          {c.modules.map(m=><option key={m.id} value={m.id}>{m.ty} · {m.nm}</option>)}</optgroup>))}
+      </select></div>
+  );
+  return <div className="dirhint" style={{marginTop:6}}>Lands on <b>{z}</b> (no target to pick).</div>;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+
+<script>
+  // classic-runtime transform (automatic runtime emits imports that break inline) — per known gotcha
+  const src=document.querySelector('script[type="text/jsx-source"]').textContent;
+  const out=Babel.transform(src,{presets:[["react",{runtime:"classic"}]]}).code;
+  new Function(out)();
+</script>
+</body>
+</html>
